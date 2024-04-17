@@ -90,6 +90,19 @@ func setInMemcache(appsInstalled AppsInstalled, clientsMemc map[string]*memcache
 
 func main() {
 
+	// Открываем файл для записи логов
+	logFile, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal("Не удалось открыть файл журнала:", err)
+	}
+	defer logFile.Close()
+
+    // Настройка логгера для записи в файл
+    log.SetOutput(logFile)
+
+    // Замер времени начала выполнения программы
+    start := time.Now()
+
 	const maxAttempts = 3
 	const retryDelay = 1 * time.Second
 
@@ -149,9 +162,18 @@ func main() {
 		}
 	}
 
-
 	if err := reader.Err(); err != nil {
 		log.Fatalf("Ошибка чтения файла: %v", err)
 	}
+
+    // Замер времени завершения выполнения программы
+    end := time.Now()
+
+    // Рассчитываем время выполнения программы
+    duration := end.Sub(start)
+
+    // Записываем время выполнения в журнал
+    log.Printf("Программа выполнена за %s", duration)
+
 }
 
