@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"compress/gzip"
+	"path/filepath"
 	"fmt"
 	"log"
 	"os"
@@ -23,6 +24,11 @@ type AppsInstalled struct {
 	Lon     float64
 	Apps    []int
 }
+
+
+const maxAttempts = 3
+const retryDelay = 1 * time.Second
+
 
 // parseAppsInstalled парсит строку и возвращает структуру AppsInstalled.
 func parseAppsInstalled(line string) *AppsInstalled {
@@ -113,8 +119,14 @@ func processLine(line string, clientsMemc map[string]*memcache.Client) {
 }
 
 
-const maxAttempts = 3
-const retryDelay = 1 * time.Second
+// Добавление префикса к имени файла
+func addPrefixToFileName(filePath, prefix string) string {
+	dir, file := filepath.Split(filePath)
+	return filepath.Join(dir, prefix+file)
+}
+
+
+
 
 func main() {
 
@@ -138,8 +150,10 @@ func main() {
 		"dvid": memcache.New("localhost:11214"),
 	}
 
+	
 	// Путь к файлу для чтения данных
 	filePath := "/home/soren/Projects/MemcLoadGo/data/appsinstalled/20170929000000_100.tsv.gz"
+
 
 	// Открытие сжатого файла
 	file, err := os.Open(filePath)
@@ -149,6 +163,7 @@ func main() {
 	defer file.Close()
 
 	var reader *bufio.Scanner
+
 
 	// Если файл с расширением .gz, создаем новый сканер для чтения сжатого содержимого
 	if strings.HasSuffix(filePath, ".gz") {
@@ -180,6 +195,15 @@ func main() {
 
     // Замер времени завершения выполнения программы
     end := time.Now()
+
+
+	// Переименование файла
+	newFilePath := addPrefixToFileName(filePath, ".")
+	if err := os.Rename(filePath, newFilePath); err != nil {
+		log.Fatalf("Ошибка переименования файла: %v", err)
+	}
+	log.Printf("Файл успешно переименован в %s\n", newFilePath)
+
 
     // Рассчитываем время выполнения программы
     duration := end.Sub(start)
