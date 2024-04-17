@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"strings"
 	"strconv"
 	"time"
@@ -88,6 +89,33 @@ func setInMemcache(appsInstalled AppsInstalled, clientsMemc map[string]*memcache
 	return nil
 }
 
+
+// Обработка строки
+func processLine(line string, clientsMemc map[string]*memcache.Client) {
+    // Line parsing
+    appsInstalled := parseAppsInstalled(line)
+    if appsInstalled == nil {
+        fmt.Println("Failed to parse AppsInstalled")
+        return
+    }
+    fmt.Printf("Parsed AppsInstalled: %+v\n", *appsInstalled)
+
+    // Попытки сохранения в Memcached
+    for attempt := 1; attempt <= maxAttempts; attempt++ {
+        // Set data in memcache
+        if err := setInMemcache(*appsInstalled, clientsMemc); err == nil {
+            fmt.Println("Успешно сохранено в Memcached")
+            return
+        }
+        log.Printf("Ошибка при выполнении операции с Memcached (попытка %d)\n", attempt)
+        time.Sleep(retryDelay) // Подождать перед повторной попыткой
+    }
+}
+
+
+const maxAttempts = 3
+const retryDelay = 1 * time.Second
+
 func main() {
 
 	// Открываем файл для записи логов
@@ -102,9 +130,6 @@ func main() {
 
     // Замер времени начала выполнения программы
     start := time.Now()
-
-	const maxAttempts = 3
-	const retryDelay = 1 * time.Second
 
 	clientsMemc := map[string]*memcache.Client{
 		"idfa": memcache.New("localhost:11211"),
@@ -138,33 +163,20 @@ func main() {
 		reader = bufio.NewScanner(file)
 	}
 
-	// Итерация по строкам файла
-	for reader.Scan() {
-		line := reader.Text()
 
-		// Line parsing
-		appsInstalled := parseAppsInstalled(line)
-		if appsInstalled != nil {
-			fmt.Printf("Parsed AppsInstalled: %+v\n", *appsInstalled)
-		} else {
-			fmt.Println("Failed to parse AppsInstalled")
-		}
+    // Запускаем горутины для обработки каждой строки
+    var wg sync.WaitGroup
+    for reader.Scan() {
+        line := reader.Text()
+        wg.Add(1)
+        go func(line string) {
+            defer wg.Done()
+            processLine(line, clientsMemc)
+        }(line)
+    }
 
-
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			// Set data in memcache
-			err := setInMemcache(*appsInstalled, clientsMemc)
-			if err == nil {
-				break // Если операция завершилась успешно, выходим из цикла
-			}
-			log.Printf("Ошибка при выполнении операции с Memcached (попытка %d): %v", attempt, err)
-			time.Sleep(retryDelay) // Подождать перед повторной попыткой
-		}
-	}
-
-	if err := reader.Err(); err != nil {
-		log.Fatalf("Ошибка чтения файла: %v", err)
-	}
+    // Ждем завершения всех горутин
+    wg.Wait()
 
     // Замер времени завершения выполнения программы
     end := time.Now()
